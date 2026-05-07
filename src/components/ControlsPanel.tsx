@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ProcessorParams, presets } from '../lib/cvProcessor';
-import { Save, ChevronDown, ChevronRight } from 'lucide-react';
+import { ProcessorParams, presets, objectTypes, defaultParams } from '../lib/cvProcessor';
+import { Save, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
 
 interface ControlsPanelProps {
   params: ProcessorParams;
@@ -65,135 +65,185 @@ export default function ControlsPanel({ params, onChange, lastCount }: ControlsP
       </div>
 
       <div className="p-4 lg:p-6 flex-1 shrink-0 space-y-5">
-        <h3 className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 lg:mb-4">CV Tuning (Hough/Canny)</h3>
+        <h3 className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 lg:mb-4">Estratégia de Análise</h3>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           <div>
             <label className="flex justify-between text-[11px] font-mono mb-2 text-slate-400">
-              <span>PRESET RÁPIDO</span>
+              <span>TIPO DE OBJETO A CONTAR</span>
             </label>
-            <select
-              onChange={(e) => {
-                if (presets[e.target.value]) {
-                  onChange(presets[e.target.value].params);
-                }
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500"
-            >
-              <option value="">-- Selecione --</option>
-              {Object.entries(presets).map(([key, config]) => (
-                <option key={key} value={key}>{config.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="border-t border-slate-800 pt-5">
-            <label className="flex justify-between text-[11px] font-mono mb-2 text-slate-400">
-              <span>MÉTODO DE DETECÇÃO</span>
-            </label>
-            <div className="flex bg-slate-950 border border-slate-800 rounded p-0.5">
-              <button 
-                onClick={() => updateParam('method', 'hough')}
-                className={`flex-1 text-[10px] font-bold uppercase tracking-widest py-1.5 rounded transition-colors ${params.method === 'hough' ? 'bg-sky-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
-              >
-                Círculos
-              </button>
-              <button 
-                onClick={() => updateParam('method', 'contours')}
-                className={`flex-1 text-[10px] font-bold uppercase tracking-widest py-1.5 rounded transition-colors ${params.method === 'contours' ? 'bg-sky-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
-              >
-                Contornos
-              </button>
+            <div className="grid grid-cols-1 gap-2">
+              {Object.entries(objectTypes).map(([key, config]) => {
+                const isActive = params.objectShape === config.params.objectShape && params.method === config.params.method;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                        onChange({ ...params, ...config.params } as ProcessorParams);
+                    }}
+                    className={`p-3 text-left border rounded transition-all flex items-center justify-between ${
+                      isActive 
+                        ? 'bg-sky-900/30 border-sky-500 text-sky-400' 
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-[11px] font-bold uppercase tracking-widest">{config.label}</span>
+                    {isActive && <CheckCircle2 size={16} />}
+                  </button>
+                );
+              })}
             </div>
           </div>
+        </div>
 
-          <ParamSlider 
-            label="Desfoque (Blur Size)" 
-            value={params.blurSize} 
-            min={1} max={21} step={2} 
-            onChange={(v) => updateParam('blurSize', v)} 
-          />
-          
-          {params.method === 'contours' && (
-            <>
-              <ParamSlider 
-                label="Canny Thresh 1" 
-                value={params.cannyThresh1} 
-                min={0} max={255} 
-                onChange={(v) => updateParam('cannyThresh1', v)} 
-              />
-              <ParamSlider 
-                label="Canny Thresh 2" 
-                value={params.cannyThresh2} 
-                min={0} max={255} 
-                onChange={(v) => updateParam('cannyThresh2', v)} 
-              />
-            </>
-          )}
+        <div className="border-t border-slate-800 pt-5">
+           <h3 className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 lg:mb-4">Tunning CV & Presets</h3>
+           
+           <div className="space-y-5">
+            <div>
+              <label className="flex justify-between text-[11px] font-mono mb-2 text-slate-400">
+                <span>PRESET DE ILUMINAÇÃO/DENSIDADE</span>
+              </label>
+              <select
+                onChange={(e) => {
+                  if (presets[e.target.value]) {
+                    onChange({ ...params, ...presets[e.target.value].params } as ProcessorParams);
+                  }
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500"
+              >
+                <option value="">-- Selecione --</option>
+                {Object.entries(presets).map(([key, config]) => (
+                  <option key={key} value={key}>{config.label}</option>
+                ))}
+              </select>
+            </div>
 
-          {params.method === 'hough' && (
-            <>
-              <ParamSlider 
-                label="Distância Mín. (minDist)" 
-                value={params.minDist} 
-                min={5} max={100} 
-                onChange={(v) => updateParam('minDist', v)} 
-              />
-              <ParamSlider 
-                label="Sensibilidade Canny (param1)" 
-                value={params.param1} 
-                min={10} max={200} 
-                onChange={(v) => updateParam('param1', v)} 
-              />
-              <ParamSlider 
-                label="Acumulador (param2 - menor = mais)" 
-                value={params.param2} 
-                min={10} max={100} 
-                onChange={(v) => updateParam('param2', v)} 
-              />
-              <div className="flex space-x-2">
-                <div className="flex-1">
-                  <ParamSlider 
-                    label="Raio Mín." 
-                    value={params.minRadius} 
-                    min={1} max={50} 
-                    onChange={(v) => updateParam('minRadius', v)} 
-                  />
-                </div>
-                <div className="flex-1">
-                  <ParamSlider 
-                    label="Raio Máx." 
-                    value={params.maxRadius} 
-                    min={10} max={150} 
-                    onChange={(v) => updateParam('maxRadius', v)} 
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-400 w-full transition-colors"
+            <div className="border-t border-slate-800 pt-5">
+              <label className="flex justify-between text-[11px] font-mono mb-2 text-slate-400">
+                <span>MÉTODO DE DETECÇÃO</span>
+              </label>
+              <div className="flex bg-slate-950 border border-slate-800 rounded p-0.5">
+                <button 
+                  onClick={() => updateParam('method', 'hough')}
+                  className={`flex-1 text-[10px] font-bold uppercase tracking-widest py-1.5 rounded transition-colors ${params.method === 'hough' ? 'bg-sky-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
                 >
-                  {showAdvanced ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
-                  Parâmetros Avançados
+                  Círculos
                 </button>
-                
-                {showAdvanced && (
-                  <div className="mt-5 space-y-5">
+                <button 
+                  onClick={() => updateParam('method', 'contours')}
+                  className={`flex-1 text-[10px] font-bold uppercase tracking-widest py-1.5 rounded transition-colors ${params.method === 'contours' ? 'bg-sky-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                >
+                  Contornos
+                </button>
+              </div>
+            </div>
+
+            <ParamSlider 
+              label="Desfoque (Blur Size)" 
+              value={params.blurSize} 
+              min={1} max={21} step={2} 
+              onChange={(v) => updateParam('blurSize', v)} 
+            />
+            
+            {params.method === 'contours' && (
+              <>
+                <ParamSlider 
+                  label="Canny Thresh 1" 
+                  value={params.cannyThresh1} 
+                  min={0} max={255} 
+                  onChange={(v) => updateParam('cannyThresh1', v)} 
+                />
+                <ParamSlider 
+                  label="Canny Thresh 2" 
+                  value={params.cannyThresh2} 
+                  min={0} max={255} 
+                  onChange={(v) => updateParam('cannyThresh2', v)} 
+                />
+                <div className="flex space-x-2">
+                  <div className="flex-1">
                     <ParamSlider 
-                      label="Resolução do Acumulador (dp)" 
-                      value={params.dp} 
-                      min={1} max={5} step={0.1}
-                      onChange={(v) => updateParam('dp', v)} 
+                      label="Área Mín." 
+                      value={params.minArea} 
+                      min={10} max={5000} step={10}
+                      onChange={(v) => updateParam('minArea', v)} 
                     />
                   </div>
-                )}
-              </div>
-            </>
-          )}
+                  <div className="flex-1">
+                    <ParamSlider 
+                      label="Área Máx." 
+                      value={params.maxArea} 
+                      min={500} max={50000} step={100}
+                      onChange={(v) => updateParam('maxArea', v)} 
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
+            {params.method === 'hough' && (
+              <>
+                <ParamSlider 
+                  label="Distância Mín. (minDist)" 
+                  value={params.minDist} 
+                  min={5} max={100} 
+                  onChange={(v) => updateParam('minDist', v)} 
+                />
+                <ParamSlider 
+                  label="Sensibilidade Canny (param1)" 
+                  value={params.param1} 
+                  min={10} max={200} 
+                  onChange={(v) => updateParam('param1', v)} 
+                />
+                <ParamSlider 
+                  label="Acumulador (param2 - menor = mais)" 
+                  value={params.param2} 
+                  min={10} max={100} 
+                  onChange={(v) => updateParam('param2', v)} 
+                />
+                <div className="flex space-x-2">
+                  <div className="flex-1">
+                    <ParamSlider 
+                      label="Raio Mín." 
+                      value={params.minRadius} 
+                      min={1} max={50} 
+                      onChange={(v) => updateParam('minRadius', v)} 
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <ParamSlider 
+                      label="Raio Máx." 
+                      value={params.maxRadius} 
+                      min={10} max={150} 
+                      onChange={(v) => updateParam('maxRadius', v)} 
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-400 w-full transition-colors"
+                  >
+                    {showAdvanced ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
+                    Parâmetros Avançados
+                  </button>
+                  
+                  {showAdvanced && (
+                    <div className="mt-5 space-y-5">
+                      <ParamSlider 
+                        label="Resolução do Acumulador (dp)" 
+                        value={params.dp} 
+                        min={1} max={5} step={0.1}
+                        onChange={(v) => updateParam('dp', v)} 
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
       

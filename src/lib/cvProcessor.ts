@@ -10,7 +10,10 @@ export interface ProcessorParams {
   param2: number;
   minRadius: number;
   maxRadius: number;
+  minArea: number;
+  maxArea: number;
   method: "hough" | "contours";
+  objectShape: "circle" | "rectangle" | "any";
 }
 
 export const defaultParams: ProcessorParams = {
@@ -23,31 +26,46 @@ export const defaultParams: ProcessorParams = {
   param2: 30,
   minRadius: 10,
   maxRadius: 50,
+  minArea: 500,
+  maxArea: 20000,
   method: "hough",
+  objectShape: "circle",
 };
 
-export const presets: Record<string, { label: string, params: ProcessorParams }> = {
+export const objectTypes: Record<string, { label: string, params: Partial<ProcessorParams> }> = {
+  "tubes": {
+    label: "Tubos / Perfis Circulares",
+    params: { method: "hough", objectShape: "circle" }
+  },
+  "boxes": {
+    label: "Caixas / Perfis Quadrados",
+    params: { method: "contours", objectShape: "rectangle", blurSize: 3, cannyThresh1: 40, cannyThresh2: 120 }
+  },
+  "any": {
+    label: "Peças Diversas (Irregulares)",
+    params: { method: "contours", objectShape: "any", blurSize: 5 }
+  }
+};
+
+export const presets: Record<string, { label: string, params: Partial<ProcessorParams> }> = {
   "default": {
-    label: "Padrão",
-    params: { ...defaultParams }
+    label: "Iluminação Padrão",
+    params: { blurSize: 5, cannyThresh1: 50, cannyThresh2: 150, minDist: 20 }
   },
   "high_density": {
-    label: "Alta Densidade (Tubos Pequenos)",
-    params: { ...defaultParams, blurSize: 3, minDist: 10, param2: 20, minRadius: 5, maxRadius: 25 }
+    label: "Alta Densidade (Próximos)",
+    params: { blurSize: 3, minDist: 10, param2: 20 }
   },
   "large_profiles": {
     label: "Perfis Grandes",
-    params: { ...defaultParams, blurSize: 7, minDist: 40, param1: 40, param2: 30, minRadius: 25, maxRadius: 100 }
+    params: { blurSize: 7, minDist: 40, param1: 40, param2: 30 }
   },
   "low_contrast": {
-    label: "Baixo Contraste / Sombra",
-    params: { ...defaultParams, blurSize: 5, cannyThresh1: 30, cannyThresh2: 100, param1: 30, param2: 25 }
-  },
-  "contours": {
-    label: "Foco em Contornos (Formas Irregulares)",
-    params: { ...defaultParams, method: "contours", blurSize: 7, cannyThresh1: 40, cannyThresh2: 120 }
+    label: "Baixo Contraste (Sombra)",
+    params: { blurSize: 7, cannyThresh1: 20, cannyThresh2: 80, param1: 30, param2: 25 }
   }
 };
+
 
 export function processImage(
   src: any, // cv.Mat
@@ -123,10 +141,29 @@ export function processImage(
     for (let i = 0; i < contours.size(); ++i) {
       let contour = contours.get(i);
       let area = cv.contourArea(contour);
-      // Filter by area to avoid noise
-      if (area > 100 && area < 5000) {
-        cv.drawContours(dst, contours, i, [255, 165, 0, 255], 2, cv.LINE_8, hierarchy, 0);
-        count++;
+      
+      // Filter by area
+      if (area >= params.minArea && area <= params.maxArea) {
+        let isMatch = true;
+
+        if (params.objectShape === "rectangle") {
+          let perimeter = cv.arcLength(contour, true);
+          let approx = new cv.Mat();
+          cv.approxPolyDP(contour, approx, 0.04 * perimeter, true);
+          
+          // Checks if contour has 4 vertices (approximately a rectangle)
+          if (approx.rows !== 4) {
+            isMatch = false;
+          } else {
+             // Optional: calculate angles if strict rectangle is needed, but 4 vertices is a good start.
+          }
+          approx.delete();
+        }
+
+        if (isMatch) {
+          cv.drawContours(dst, contours, i, [255, 165, 0, 255], 2, cv.LINE_8, hierarchy, 0);
+          count++;
+        }
       }
       contour.delete();
     }
