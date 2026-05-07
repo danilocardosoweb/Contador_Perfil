@@ -159,15 +159,15 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
       </div>
       
       {/* Floating Overlay Tools */}
-      <div className="absolute top-8 left-8 flex flex-col gap-2 z-30 pointer-events-none">
-        <div className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded border border-slate-700 text-[10px] font-mono text-sky-400">
+      <div className="absolute top-4 left-4 lg:top-8 lg:left-8 flex flex-col gap-2 z-30 pointer-events-none">
+        <div className="bg-slate-900/90 backdrop-blur-md px-2 py-1 lg:px-3 lg:py-1.5 rounded border border-slate-700 text-[9px] lg:text-[10px] font-mono text-sky-400">
           OPENCV_CORE: {mode === 'camera' && isRunning ? 'ONLINE / LATENCY OPTIMIZED' : (mode === 'image' ? 'STATIC ANALYSIS' : 'PAUSED')}
         </div>
       </div>
 
-      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-wrap justify-center gap-4 z-30">
-        <label className="px-5 py-3 font-bold text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600 cursor-pointer">
-          <Upload size={16} />
+      <div className="absolute bottom-4 lg:bottom-10 left-1/2 -translate-x-1/2 flex flex-wrap justify-center gap-2 lg:gap-4 z-30 w-[95%] lg:w-auto">
+        <label className="px-3 py-2 lg:px-5 lg:py-3 font-bold text-[9px] lg:text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600 cursor-pointer">
+          <Upload size={14} className="lg:w-4 lg:h-4" />
           <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
           CARREGAR IMAGEM
         </label>
@@ -175,14 +175,14 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
         {mode === 'image' ? (
           <button 
             onClick={switchToCamera}
-            className="px-5 py-3 font-bold text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all bg-sky-600 hover:bg-sky-500 text-white border-sky-400"
+            className="px-3 py-2 lg:px-5 lg:py-3 font-bold text-[9px] lg:text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all bg-sky-600 hover:bg-sky-500 text-white border-sky-400"
           >
             VOLTAR PRA CÂMERA
           </button>
         ) : (
           <button 
             onClick={() => setIsRunning(!isRunning)}
-            className={`px-5 py-3 font-bold text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all ${
+            className={`px-3 py-2 lg:px-5 lg:py-3 font-bold text-[9px] lg:text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all ${
               isRunning 
                 ? 'bg-red-900/80 hover:bg-red-800 text-red-300 border-red-700' 
                 : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400'

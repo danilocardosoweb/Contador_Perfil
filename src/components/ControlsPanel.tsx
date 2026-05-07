@@ -41,19 +41,19 @@ export default function ControlsPanel({ params, onChange, lastCount }: ControlsP
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800">
-      <div className="p-6 border-b border-slate-800 bg-slate-900/80">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Current Detection Results</h3>
+    <div className="flex flex-col h-full w-full bg-slate-900 overflow-y-auto">
+      <div className="p-4 lg:p-6 border-b border-slate-800 bg-slate-900/80 shrink-0">
+        <h3 className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 lg:mb-4">Current Detection Results</h3>
         <div className="flex items-end justify-between">
           <div className="flex flex-col">
-            <span className="text-6xl font-mono font-bold text-white leading-none">
+            <span className="text-5xl lg:text-6xl font-mono font-bold text-white leading-none">
               {lastCount !== null ? lastCount : '--'}
             </span>
-            <span className="text-[10px] font-medium text-slate-400 mt-2 uppercase tracking-wide">Profiles Identified</span>
+            <span className="text-[9px] lg:text-[10px] font-medium text-slate-400 mt-2 uppercase tracking-wide">Profiles Identified</span>
           </div>
         </div>
         
-        <div className="mt-6 space-y-3">
+        <div className="mt-4 lg:mt-6 space-y-3">
           <input 
             type="text" 
             placeholder="Lote / Observações (Opcional)"
@@ -64,8 +64,8 @@ export default function ControlsPanel({ params, onChange, lastCount }: ControlsP
         </div>
       </div>
 
-      <div className="p-6 flex-1 overflow-y-auto space-y-5">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">CV Tuning (Hough/Canny)</h3>
+      <div className="p-4 lg:p-6 flex-1 shrink-0 space-y-5">
+        <h3 className="text-[10px] lg:text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 lg:mb-4">CV Tuning (Hough/Canny)</h3>
 
         <div className="space-y-5">
           <div>
@@ -197,11 +197,11 @@ export default function ControlsPanel({ params, onChange, lastCount }: ControlsP
         </div>
       </div>
       
-      <div className="p-6 bg-slate-950 border-t border-slate-800">
+      <div className="sticky bottom-0 p-4 lg:p-6 bg-slate-950/95 backdrop-blur border-t border-slate-800 shrink-0 z-10">
         <button 
           onClick={handleSave}
           disabled={isSaving || lastCount === null}
-          className="w-full py-3 bg-green-600 hover:bg-green-500 text-white text-[11px] font-bold uppercase tracking-widest rounded flex items-center justify-center gap-2 border border-green-500 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3 lg:py-4 bg-green-600 hover:bg-green-500 text-white text-[11px] font-bold uppercase tracking-widest rounded flex items-center justify-center gap-2 border border-green-500 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save size={16} />
           {isSaving ? 'SALVANDO...' : 'COMMIT TO DATABASE (SQLITE)'}
