@@ -1,0 +1,6 @@
+{
+  "name": "AlumiCount Pro",
+  "description": "Aplicativo para contagem de perfis de alumínio usando visão computacional convencional (OpenCV.js).",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": []
+}
