@@ -21,6 +21,7 @@ export interface ProcessorParams {
   geomValidation: boolean;
   debugView: "normal" | "roi" | "thresh" | "edges" | "discarded";
   exclusionZones?: {x: number, y: number, w: number, h: number}[];
+  inclusionZones?: {x: number, y: number, w: number, h: number}[];
 }
 
 export const defaultParams: ProcessorParams = {
@@ -221,6 +222,16 @@ export function processImage(
           }
         }
 
+        if (isValid && params.inclusionZones && params.inclusionZones.length > 0) {
+          let insideInclusion = false;
+          for (const zone of params.inclusionZones) {
+            if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h) {
+              insideInclusion = true; break;
+            }
+          }
+          if (!insideInclusion) isValid = false;
+        }
+
         if (isValid && params.exclusionZones) {
           for (const zone of params.exclusionZones) {
             if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h) {
@@ -271,6 +282,16 @@ export function processImage(
                let cX = Math.round(M.m10 / M.m00); let cY = Math.round(M.m01 / M.m00);
                if (mask.ucharPtr(cY, cX)[0] === 0) isMatch = false;
                
+               if (isMatch && params.inclusionZones && params.inclusionZones.length > 0) {
+                 let insideInclusion = false;
+                 for (const zone of params.inclusionZones) {
+                   if (cX >= zone.x && cX <= zone.x + zone.w && cY >= zone.y && cY <= zone.y + zone.h) {
+                     insideInclusion = true; break;
+                   }
+                 }
+                 if (!insideInclusion) isMatch = false;
+               }
+
                if (isMatch && params.exclusionZones) {
                  for (const zone of params.exclusionZones) {
                    if (cX >= zone.x && cX <= zone.x + zone.w && cY >= zone.y && cY <= zone.y + zone.h) {
@@ -297,6 +318,13 @@ export function processImage(
       for (const zone of params.exclusionZones) {
         cv.rectangle(dst, new cv.Point(zone.x, zone.y), new cv.Point(zone.x + zone.w, zone.y + zone.h), [255, 0, 0, 150], 2);
         cv.putText(dst, "EXCLUIDO", new cv.Point(zone.x + 5, zone.y + 15), cv.FONT_HERSHEY_SIMPLEX, 0.4, [255, 0, 0, 255], 1);
+      }
+    }
+
+    if (params.inclusionZones) {
+      for (const zone of params.inclusionZones) {
+        cv.rectangle(dst, new cv.Point(zone.x, zone.y), new cv.Point(zone.x + zone.w, zone.y + zone.h), [0, 255, 0, 150], 2);
+        cv.putText(dst, "INCLUIDO", new cv.Point(zone.x + 5, zone.y + 15), cv.FONT_HERSHEY_SIMPLEX, 0.4, [0, 255, 0, 255], 1);
       }
     }
     

@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import cv from "@techstark/opencv-js";
 import Webcam from 'react-webcam';
 import { ProcessorParams, processImage } from '../lib/cvProcessor';
-import { Upload } from 'lucide-react';
+import { Upload, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 
 interface CameraViewProps {
   params: ProcessorParams;
@@ -17,19 +17,30 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
   const [staticImage, setStaticImage] = useState<HTMLImageElement | null>(null);
   const requestRef = useRef<number>();
 
-  const [isDrawingExclusion, setIsDrawingExclusion] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<'exclusion' | 'inclusion' | null>(null);
   const [exclusionZones, setExclusionZones] = useState<{x: number, y: number, w: number, h: number}[]>([]);
-  const [exclusionStart, setExclusionStart] = useState<{x: number, y: number} | null>(null);
+  const [inclusionZones, setInclusionZones] = useState<{x: number, y: number, w: number, h: number}[]>([]);
+  const [drawStart, setDrawStart] = useState<{x: number, y: number} | null>(null);
+
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{x: number, y: number} | null>(null);
 
   const exclusionZonesRef = useRef(exclusionZones);
-  const currentExclusionRef = useRef<{x: number, y: number, w: number, h: number} | null>(null);
+  const inclusionZonesRef = useRef(inclusionZones);
+  const currentDrawRef = useRef<{x: number, y: number, w: number, h: number} | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     exclusionZonesRef.current = exclusionZones;
   }, [exclusionZones]);
 
-  const drawOverlay = (exclusion: {x: number, y: number, w: number, h: number} | null) => {
+  useEffect(() => {
+    inclusionZonesRef.current = inclusionZones;
+  }, [inclusionZones]);
+
+  const drawOverlay = (currentRect: {x: number, y: number, w: number, h: number} | null) => {
     const overlay = overlayCanvasRef.current;
     if (!overlay) return;
     const ctx = overlay.getContext('2d');
@@ -37,13 +48,13 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
     
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     
-    if (exclusion) {
+    if (currentRect && drawingMode) {
       const scale = Math.max(1, overlay.width / 1000);
-      ctx.strokeStyle = 'rgba(255, 165, 0, 0.9)';
+      ctx.strokeStyle = drawingMode === 'exclusion' ? 'rgba(255, 165, 0, 0.9)' : 'rgba(0, 255, 0, 0.9)';
       ctx.lineWidth = 3 * scale;
-      ctx.strokeRect(exclusion.x, exclusion.y, exclusion.w, exclusion.h);
-      ctx.fillStyle = 'rgba(255, 165, 0, 0.2)';
-      ctx.fillRect(exclusion.x, exclusion.y, exclusion.w, exclusion.h);
+      ctx.strokeRect(currentRect.x, currentRect.y, currentRect.w, currentRect.h);
+      ctx.fillStyle = drawingMode === 'exclusion' ? 'rgba(255, 165, 0, 0.2)' : 'rgba(0, 255, 0, 0.2)';
+      ctx.fillRect(currentRect.x, currentRect.y, currentRect.w, currentRect.h);
     }
   };
 
@@ -68,7 +79,8 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           let dst = new cv.Mat();
           let count = processImage(src, dst, { 
             ...params, 
-            exclusionZones 
+            exclusionZones,
+            inclusionZones
           });
           onCountUpdate(count);
           cv.imshow(canvas, dst);
@@ -79,13 +91,13 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
         }
       }
     }
-  }, [mode, staticImage, params, exclusionZones, onCountUpdate]);
+  }, [mode, staticImage, params, exclusionZones, inclusionZones, onCountUpdate]);
 
   useEffect(() => {
     if (mode === 'image') {
       processStaticImage();
     }
-  }, [mode, staticImage, params, exclusionZones, processStaticImage]);
+  }, [mode, staticImage, params, exclusionZones, inclusionZones, processStaticImage]);
 
   const lastProcessTime = useRef<number>(0);
 
@@ -132,7 +144,8 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           
           let count = processImage(src, dst, {
             ...params,
-            exclusionZones: exclusionZonesRef.current
+            exclusionZones: exclusionZonesRef.current,
+            inclusionZones: inclusionZonesRef.current
           });
           onCountUpdate(count);
           
@@ -172,6 +185,8 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           setStaticImage(img);
           setMode('image');
           setIsRunning(false);
+          setScale(1);
+          setPan({x: 0, y: 0});
         };
         img.src = event.target?.result as string;
       };
@@ -184,7 +199,18 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
     setStaticImage(null);
     setIsRunning(true);
     setExclusionZones([]);
-    setIsDrawingExclusion(false);
+    setInclusionZones([]);
+    setDrawingMode(null);
+    setScale(1);
+    setPan({x: 0, y: 0});
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0) {
+      setScale(s => Math.min(s + 0.2, 5));
+    } else {
+      setScale(s => Math.max(s - 0.2, 0.5));
+    }
   };
 
   const getPointerCoords = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
@@ -208,125 +234,193 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
   };
 
   const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawingExclusion || !canvasRef.current) return;
+    if (!canvasRef.current) return;
+    
+    if (!drawingMode) {
+      setIsPanning(true);
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+      panStartRef.current = { x: clientX - pan.x, y: clientY - pan.y };
+      return;
+    }
+
     const coords = getPointerCoords(e, canvasRef.current);
-    setExclusionStart(coords);
+    setDrawStart(coords);
   };
 
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawingExclusion || !exclusionStart || !canvasRef.current) return;
+    if (isPanning && panStartRef.current) {
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+      setPan({
+        x: clientX - panStartRef.current.x,
+        y: clientY - panStartRef.current.y
+      });
+      return;
+    }
+
+    if (!drawingMode || !drawStart || !canvasRef.current) return;
     const coords = getPointerCoords(e, canvasRef.current);
-    const newExclusion = {
-      x: Math.min(exclusionStart.x, coords.x),
-      y: Math.min(exclusionStart.y, coords.y),
-      w: Math.abs(coords.x - exclusionStart.x),
-      h: Math.abs(coords.y - exclusionStart.y)
+    const newRect = {
+      x: Math.min(drawStart.x, coords.x),
+      y: Math.min(drawStart.y, coords.y),
+      w: Math.abs(coords.x - drawStart.x),
+      h: Math.abs(coords.y - drawStart.y)
     };
-    currentExclusionRef.current = newExclusion;
-    drawOverlay(newExclusion);
+    currentDrawRef.current = newRect;
+    drawOverlay(newRect);
   };
 
   const handlePointerUp = () => {
-    if (isDrawingExclusion && currentExclusionRef.current) {
-      if (currentExclusionRef.current.w > 10 && currentExclusionRef.current.h > 10) {
-        setExclusionZones(prev => [...prev, currentExclusionRef.current!]);
+    if (isPanning) {
+      setIsPanning(false);
+      panStartRef.current = null;
+    }
+
+    if (drawingMode && currentDrawRef.current) {
+      if (currentDrawRef.current.w > 10 && currentDrawRef.current.h > 10) {
+        if (drawingMode === 'exclusion') {
+          setExclusionZones(prev => [...prev, currentDrawRef.current!]);
+        } else {
+          setInclusionZones(prev => [...prev, currentDrawRef.current!]);
+        }
       }
     }
-    setExclusionStart(null);
-    currentExclusionRef.current = null;
+    setDrawStart(null);
+    currentDrawRef.current = null;
     drawOverlay(null);
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center w-full h-full z-10">
-      <div 
-        className="relative w-full h-full bg-slate-900 border border-slate-700 rounded-sm overflow-hidden flex items-center justify-center shadow-inner"
-        onMouseDown={handlePointerDown}
-        onMouseMove={handlePointerMove}
-        onMouseUp={handlePointerUp}
-        onMouseLeave={handlePointerUp}
-        onTouchStart={handlePointerDown}
-        onTouchMove={handlePointerMove}
-        onTouchEnd={handlePointerUp}
-      >
-        {/* @ts-ignore - React 19 type mismatch in react-webcam */}
-        <Webcam
-          ref={webcamRef}
-          audio={false}
-          screenshotFormat="image/jpeg"
-          videoConstraints={{ facingMode: "environment" }}
-          className={`absolute opacity-0 pointer-events-none ${mode === 'image' ? 'hidden' : ''}`}
-        />
-        <canvas 
-          ref={canvasRef} 
-          className="object-contain max-w-full max-h-full z-10"
-          id="cv-canvas"
-        />
-        <canvas 
-          ref={overlayCanvasRef}
-          className="absolute inset-0 object-contain w-full h-full z-20 pointer-events-none"
-        />
-        
-        {/* Scanning Line overlay */}
-        {isRunning && mode === 'camera' && <div className="absolute w-full h-px bg-sky-400/30 top-1/2 shadow-[0_0_15px_rgba(56,189,248,0.5)] z-20 pointer-events-none"></div>}
-        
-        {/* Corner Markers */}
-        <div className="absolute top-4 left-4 w-10 h-10 border-t-2 border-l-2 border-sky-500/50 z-20 pointer-events-none"></div>
-        <div className="absolute top-4 right-4 w-10 h-10 border-t-2 border-r-2 border-sky-500/50 z-20 pointer-events-none"></div>
-        <div className="absolute bottom-4 left-4 w-10 h-10 border-b-2 border-l-2 border-sky-500/50 z-20 pointer-events-none"></div>
-        <div className="absolute bottom-4 right-4 w-10 h-10 border-b-2 border-r-2 border-sky-500/50 z-20 pointer-events-none"></div>
-      </div>
-      
-      <div className="absolute top-4 right-4 lg:top-8 lg:right-8 flex flex-col gap-2 z-30">
-        <button 
-          onClick={() => setIsDrawingExclusion(!isDrawingExclusion)}
-          className={`px-3 py-2 rounded text-[9px] lg:text-[10px] uppercase font-bold border transition-colors shadow ${isDrawingExclusion ? 'bg-amber-600 text-white border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
-        >
-          {isDrawingExclusion ? 'FINALIZAR ÁREAS' : 'IGNORAR ÁREAS'}
-        </button>
-        {exclusionZones.length > 0 && (
-          <button 
-            onClick={() => setExclusionZones([])}
-            className="px-3 py-2 bg-red-900/80 hover:bg-red-800 text-red-300 rounded text-[9px] lg:text-[10px] uppercase font-bold border border-red-700 transition-colors shadow"
-          >
-            LIMPAR {exclusionZones.length} ÁREA(S)
-          </button>
-        )}
-      </div>
+    <div className="flex flex-col w-full h-full bg-slate-950">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-900 border-b border-slate-800 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="px-3 py-1.5 lg:px-4 lg:py-2 font-bold text-[9px] lg:text-[10px] uppercase tracking-widest rounded flex items-center gap-2 border transition-all bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600 cursor-pointer">
+            <Upload size={14} className="lg:w-4 lg:h-4" />
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            CARREGAR IMAGEM
+          </label>
 
-      {/* Floating Overlay Tools */}
-      <div className="absolute top-4 left-4 lg:top-8 lg:left-8 flex flex-col gap-2 z-30 pointer-events-none">
-        <div className="bg-slate-900/90 backdrop-blur-md px-2 py-1 lg:px-3 lg:py-1.5 rounded border border-slate-700 text-[9px] lg:text-[10px] font-mono text-sky-400">
-          OPENCV_CORE: {mode === 'camera' && isRunning ? 'ONLINE / LATENCY OPTIMIZED' : (mode === 'image' ? 'STATIC ANALYSIS' : 'PAUSED')}
+          {mode === 'image' ? (
+            <button 
+              onClick={switchToCamera}
+              className="px-3 py-1.5 lg:px-4 lg:py-2 font-bold text-[9px] lg:text-[10px] uppercase tracking-widest rounded flex items-center gap-2 border transition-all bg-sky-600 hover:bg-sky-500 text-white border-sky-400"
+            >
+              VOLTAR PRA CÂMERA
+            </button>
+          ) : (
+            <button 
+              onClick={() => setIsRunning(!isRunning)}
+              className={`px-3 py-1.5 lg:px-4 lg:py-2 font-bold text-[9px] lg:text-[10px] uppercase tracking-widest rounded flex items-center gap-2 border transition-all ${
+                isRunning 
+                  ? 'bg-red-900/80 hover:bg-red-800 text-red-300 border-red-700' 
+                  : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400'
+              }`}
+            >
+              {isRunning ? 'PAUSAR CÂMERA' : 'RETOMAR DETECÇÃO'}
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 bg-slate-800 rounded border border-slate-700 mr-2 p-1">
+            <button
+              onClick={() => setScale(s => Math.max(s - 0.2, 0.5))}
+              className="p-1 lg:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition"
+              title="Diminuir Zoom"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <span className="text-[10px] font-mono w-10 text-center text-slate-400">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              onClick={() => setScale(s => Math.min(s + 0.2, 5))}
+              className="p-1 lg:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition"
+              title="Aumentar Zoom"
+            >
+              <ZoomIn size={16} />
+            </button>
+            {(scale !== 1 || pan.x !== 0 || pan.y !== 0) && (
+              <button
+                onClick={() => { setScale(1); setPan({x:0, y:0}) }}
+                className="p-1 lg:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition ml-1 border-l border-slate-700"
+                title="Resetar Zoom/Pan"
+              >
+                <Maximize size={16} />
+              </button>
+            )}
+          </div>
+          <button 
+            onClick={() => setDrawingMode(drawingMode === 'inclusion' ? null : 'inclusion')}
+            className={`px-3 py-1.5 lg:px-4 lg:py-2 rounded text-[9px] lg:text-[10px] uppercase font-bold border transition-colors ${drawingMode === 'inclusion' ? 'bg-green-600 text-white border-green-500' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
+          >
+            {drawingMode === 'inclusion' ? 'FINALIZAR ÁREAS' : 'SELECIONAR ÁREAS'}
+          </button>
+          <button 
+            onClick={() => setDrawingMode(drawingMode === 'exclusion' ? null : 'exclusion')}
+            className={`px-3 py-1.5 lg:px-4 lg:py-2 rounded text-[9px] lg:text-[10px] uppercase font-bold border transition-colors ${drawingMode === 'exclusion' ? 'bg-amber-600 text-white border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
+          >
+            {drawingMode === 'exclusion' ? 'FINALIZAR ÁREAS' : 'IGNORAR ÁREAS'}
+          </button>
+          {(exclusionZones.length > 0 || inclusionZones.length > 0) && (
+            <button 
+              onClick={() => { setExclusionZones([]); setInclusionZones([]); }}
+              className="px-3 py-1.5 lg:px-4 lg:py-2 bg-red-900/80 hover:bg-red-800 text-red-300 rounded text-[9px] lg:text-[10px] uppercase font-bold border border-red-700 transition-colors"
+            >
+              LIMPAR ÁREAS
+            </button>
+          )}
         </div>
       </div>
-
-      <div className="absolute bottom-4 lg:bottom-10 left-1/2 -translate-x-1/2 flex flex-wrap justify-center gap-2 lg:gap-4 z-30 w-[95%] lg:w-auto">
-        <label className="px-3 py-2 lg:px-5 lg:py-3 font-bold text-[9px] lg:text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600 cursor-pointer">
-          <Upload size={14} className="lg:w-4 lg:h-4" />
-          <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-          CARREGAR IMAGEM
-        </label>
-
-        {mode === 'image' ? (
-          <button 
-            onClick={switchToCamera}
-            className="px-3 py-2 lg:px-5 lg:py-3 font-bold text-[9px] lg:text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all bg-sky-600 hover:bg-sky-500 text-white border-sky-400"
+      
+      <div className="relative flex-1 w-full bg-slate-900 overflow-hidden flex items-center justify-center">
+        <div 
+          className={`relative w-full h-full flex items-center justify-center ${drawingMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
+          onMouseDown={handlePointerDown}
+          onMouseMove={handlePointerMove}
+          onMouseUp={handlePointerUp}
+          onMouseLeave={handlePointerUp}
+          onTouchStart={handlePointerDown}
+          onTouchMove={handlePointerMove}
+          onTouchEnd={handlePointerUp}
+          onWheel={handleWheel}
+        >
+          <div 
+            className="relative will-change-transform flex items-center justify-center w-full h-full"
+            style={{ 
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+              transition: isPanning ? 'none' : 'transform 0.1s ease-out'
+            }}
           >
-            VOLTAR PRA CÂMERA
-          </button>
-        ) : (
-          <button 
-            onClick={() => setIsRunning(!isRunning)}
-            className={`px-3 py-2 lg:px-5 lg:py-3 font-bold text-[9px] lg:text-[11px] uppercase tracking-widest rounded shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] flex items-center gap-2 border transition-all ${
-              isRunning 
-                ? 'bg-red-900/80 hover:bg-red-800 text-red-300 border-red-700' 
-                : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400'
-            }`}
-          >
-            {isRunning ? 'PAUSAR CÂMERA' : 'RETOMAR DETECÇÃO'}
-          </button>
-        )}
+            {/* @ts-ignore - React 19 type mismatch in react-webcam */}
+            <Webcam
+              ref={webcamRef}
+              audio={false}
+              screenshotFormat="image/jpeg"
+              videoConstraints={{ facingMode: "environment" }}
+              className={`absolute opacity-0 pointer-events-none ${mode === 'image' ? 'hidden' : ''}`}
+            />
+            <canvas 
+              ref={canvasRef} 
+              className="object-contain max-w-full max-h-full z-10"
+              id="cv-canvas"
+            />
+            <canvas 
+              ref={overlayCanvasRef}
+              className="absolute inset-0 object-contain w-full h-full z-20 pointer-events-none"
+            />
+          </div>
+          
+          {/* Scanning Line overlay */}
+          {isRunning && mode === 'camera' && <div className="absolute w-full h-px bg-sky-400/30 top-1/2 shadow-[0_0_15px_rgba(56,189,248,0.5)] z-20 pointer-events-none"></div>}
+          
+          {/* Corner Markers */}
+          <div className="absolute top-4 left-4 w-10 h-10 border-t-2 border-l-2 border-sky-500/50 z-20 pointer-events-none"></div>
+          <div className="absolute top-4 right-4 w-10 h-10 border-t-2 border-r-2 border-sky-500/50 z-20 pointer-events-none"></div>
+          <div className="absolute bottom-4 left-4 w-10 h-10 border-b-2 border-l-2 border-sky-500/50 z-20 pointer-events-none"></div>
+          <div className="absolute bottom-4 right-4 w-10 h-10 border-b-2 border-r-2 border-sky-500/50 z-20 pointer-events-none"></div>
+        </div>
       </div>
     </div>
   );
