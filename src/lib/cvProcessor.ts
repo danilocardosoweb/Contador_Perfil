@@ -21,7 +21,6 @@ export interface ProcessorParams {
   geomValidation: boolean;
   debugView: "normal" | "roi" | "thresh" | "edges" | "discarded";
   exclusionZones?: {x: number, y: number, w: number, h: number}[];
-  currentExclusion?: {x: number, y: number, w: number, h: number} | null;
 }
 
 export const defaultParams: ProcessorParams = {
@@ -119,7 +118,9 @@ export function processImage(
       let hierarchy = new cv.Mat();
       cv.findContours(roiEdges, roiContours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
       
-      mask = cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
+      mask.create(src.rows, src.cols, cv.CV_8UC1);
+      mask.setTo(new cv.Scalar(0));
+      
       let maxArea = 0, maxIdx = -1;
       for (let i = 0; i < roiContours.size(); i++) {
         let area = cv.contourArea(roiContours.get(i));
@@ -136,7 +137,8 @@ export function processImage(
       
       roiEdges.delete(); kernelROI.delete(); roiContours.delete(); hierarchy.delete();
     } else {
-      mask = new cv.Mat(src.rows, src.cols, cv.CV_8UC1, new cv.Scalar(255));
+      mask.create(src.rows, src.cols, cv.CV_8UC1);
+      mask.setTo(new cv.Scalar(255));
     }
 
     // 2. CLAHE / Equalization
@@ -298,11 +300,6 @@ export function processImage(
       }
     }
     
-    if (params.currentExclusion) {
-      const zone = params.currentExclusion;
-      cv.rectangle(dst, new cv.Point(zone.x, zone.y), new cv.Point(zone.x + zone.w, zone.y + zone.h), [255, 165, 0, 200], 2);
-    }
-
   } catch (err) {
     console.error("OpenCV Industrial Processing Error:", err);
   } finally {

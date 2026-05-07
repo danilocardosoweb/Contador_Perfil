@@ -20,18 +20,32 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
   const [isDrawingExclusion, setIsDrawingExclusion] = useState(false);
   const [exclusionZones, setExclusionZones] = useState<{x: number, y: number, w: number, h: number}[]>([]);
   const [exclusionStart, setExclusionStart] = useState<{x: number, y: number} | null>(null);
-  const [currentExclusion, setCurrentExclusion] = useState<{x: number, y: number, w: number, h: number} | null>(null);
 
   const exclusionZonesRef = useRef(exclusionZones);
-  const currentExclusionRef = useRef(currentExclusion);
+  const currentExclusionRef = useRef<{x: number, y: number, w: number, h: number} | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     exclusionZonesRef.current = exclusionZones;
   }, [exclusionZones]);
 
-  useEffect(() => {
-    currentExclusionRef.current = currentExclusion;
-  }, [currentExclusion]);
+  const drawOverlay = (exclusion: {x: number, y: number, w: number, h: number} | null) => {
+    const overlay = overlayCanvasRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    
+    if (exclusion) {
+      const scale = Math.max(1, overlay.width / 1000);
+      ctx.strokeStyle = 'rgba(255, 165, 0, 0.9)';
+      ctx.lineWidth = 3 * scale;
+      ctx.strokeRect(exclusion.x, exclusion.y, exclusion.w, exclusion.h);
+      ctx.fillStyle = 'rgba(255, 165, 0, 0.2)';
+      ctx.fillRect(exclusion.x, exclusion.y, exclusion.w, exclusion.h);
+    }
+  };
 
   const processStaticImage = useCallback(() => {
     if (mode === 'image' && staticImage && canvasRef.current) {
@@ -41,6 +55,10 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
+        if (overlayCanvasRef.current) {
+          overlayCanvasRef.current.width = width;
+          overlayCanvasRef.current.height = height;
+        }
       }
       const context = canvas.getContext('2d');
       if (context) {
@@ -50,8 +68,7 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           let dst = new cv.Mat();
           let count = processImage(src, dst, { 
             ...params, 
-            exclusionZones, 
-            currentExclusion 
+            exclusionZones 
           });
           onCountUpdate(count);
           cv.imshow(canvas, dst);
@@ -62,13 +79,13 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
         }
       }
     }
-  }, [mode, staticImage, params, onCountUpdate]);
+  }, [mode, staticImage, params, exclusionZones, onCountUpdate]);
 
   useEffect(() => {
     if (mode === 'image') {
       processStaticImage();
     }
-  }, [mode, staticImage, params, exclusionZones, currentExclusion, processStaticImage]);
+  }, [mode, staticImage, params, exclusionZones, processStaticImage]);
 
   const lastProcessTime = useRef<number>(0);
 
@@ -97,6 +114,10 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
+        if (overlayCanvasRef.current) {
+          overlayCanvasRef.current.width = width;
+          overlayCanvasRef.current.height = height;
+        }
       }
 
       const context = canvas.getContext('2d');
@@ -111,8 +132,7 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           
           let count = processImage(src, dst, {
             ...params,
-            exclusionZones: exclusionZonesRef.current,
-            currentExclusion: currentExclusionRef.current
+            exclusionZones: exclusionZonesRef.current
           });
           onCountUpdate(count);
           
@@ -196,22 +216,25 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawingExclusion || !exclusionStart || !canvasRef.current) return;
     const coords = getPointerCoords(e, canvasRef.current);
-    setCurrentExclusion({
+    const newExclusion = {
       x: Math.min(exclusionStart.x, coords.x),
       y: Math.min(exclusionStart.y, coords.y),
       w: Math.abs(coords.x - exclusionStart.x),
       h: Math.abs(coords.y - exclusionStart.y)
-    });
+    };
+    currentExclusionRef.current = newExclusion;
+    drawOverlay(newExclusion);
   };
 
   const handlePointerUp = () => {
-    if (isDrawingExclusion && currentExclusion) {
-      if (currentExclusion.w > 10 && currentExclusion.h > 10) {
-        setExclusionZones(prev => [...prev, currentExclusion]);
+    if (isDrawingExclusion && currentExclusionRef.current) {
+      if (currentExclusionRef.current.w > 10 && currentExclusionRef.current.h > 10) {
+        setExclusionZones(prev => [...prev, currentExclusionRef.current!]);
       }
     }
     setExclusionStart(null);
-    setCurrentExclusion(null);
+    currentExclusionRef.current = null;
+    drawOverlay(null);
   };
 
   return (
@@ -238,6 +261,10 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           ref={canvasRef} 
           className="object-contain max-w-full max-h-full z-10"
           id="cv-canvas"
+        />
+        <canvas 
+          ref={overlayCanvasRef}
+          className="absolute inset-0 object-contain w-full h-full z-20 pointer-events-none"
         />
         
         {/* Scanning Line overlay */}
