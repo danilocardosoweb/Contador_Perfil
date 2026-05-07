@@ -17,6 +17,22 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
   const [staticImage, setStaticImage] = useState<HTMLImageElement | null>(null);
   const requestRef = useRef<number>();
 
+  const [isDrawingExclusion, setIsDrawingExclusion] = useState(false);
+  const [exclusionZones, setExclusionZones] = useState<{x: number, y: number, w: number, h: number}[]>([]);
+  const [exclusionStart, setExclusionStart] = useState<{x: number, y: number} | null>(null);
+  const [currentExclusion, setCurrentExclusion] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+
+  const exclusionZonesRef = useRef(exclusionZones);
+  const currentExclusionRef = useRef(currentExclusion);
+
+  useEffect(() => {
+    exclusionZonesRef.current = exclusionZones;
+  }, [exclusionZones]);
+
+  useEffect(() => {
+    currentExclusionRef.current = currentExclusion;
+  }, [currentExclusion]);
+
   const processStaticImage = useCallback(() => {
     if (mode === 'image' && staticImage && canvasRef.current) {
       const canvas = canvasRef.current;
@@ -32,7 +48,11 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
         try {
           let src = cv.imread(canvas);
           let dst = new cv.Mat();
-          let count = processImage(src, dst, params);
+          let count = processImage(src, dst, { 
+            ...params, 
+            exclusionZones, 
+            currentExclusion 
+          });
           onCountUpdate(count);
           cv.imshow(canvas, dst);
           src.delete();
@@ -48,11 +68,21 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
     if (mode === 'image') {
       processStaticImage();
     }
-  }, [mode, staticImage, params, processStaticImage]);
+  }, [mode, staticImage, params, exclusionZones, currentExclusion, processStaticImage]);
 
-  const processFrame = useCallback(() => {
+  const lastProcessTime = useRef<number>(0);
+
+  const processFrame = useCallback((timestamp: number) => {
     if (!isRunning || mode === 'image') return;
     
+    if (timestamp - lastProcessTime.current < 150) {
+      if (isRunning && mode === 'camera') {
+        requestRef.current = requestAnimationFrame(processFrame);
+      }
+      return;
+    }
+    lastProcessTime.current = timestamp;
+
     if (
       webcamRef.current &&
       webcamRef.current.video &&
@@ -79,7 +109,11 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
           let src = cv.imread(canvas);
           let dst = new cv.Mat();
           
-          let count = processImage(src, dst, params);
+          let count = processImage(src, dst, {
+            ...params,
+            exclusionZones: exclusionZonesRef.current,
+            currentExclusion: currentExclusionRef.current
+          });
           onCountUpdate(count);
           
           // Draw processed image back to canvas
@@ -129,11 +163,69 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
     setMode('camera');
     setStaticImage(null);
     setIsRunning(true);
+    setExclusionZones([]);
+    setIsDrawingExclusion(false);
+  };
+
+  const getPointerCoords = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    let clientX, clientY;
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = (e as React.MouseEvent).clientX;
+      clientY = (e as React.MouseEvent).clientY;
+    }
+    
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
+  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawingExclusion || !canvasRef.current) return;
+    const coords = getPointerCoords(e, canvasRef.current);
+    setExclusionStart(coords);
+  };
+
+  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawingExclusion || !exclusionStart || !canvasRef.current) return;
+    const coords = getPointerCoords(e, canvasRef.current);
+    setCurrentExclusion({
+      x: Math.min(exclusionStart.x, coords.x),
+      y: Math.min(exclusionStart.y, coords.y),
+      w: Math.abs(coords.x - exclusionStart.x),
+      h: Math.abs(coords.y - exclusionStart.y)
+    });
+  };
+
+  const handlePointerUp = () => {
+    if (isDrawingExclusion && currentExclusion) {
+      if (currentExclusion.w > 10 && currentExclusion.h > 10) {
+        setExclusionZones(prev => [...prev, currentExclusion]);
+      }
+    }
+    setExclusionStart(null);
+    setCurrentExclusion(null);
   };
 
   return (
     <div className="relative flex flex-col items-center justify-center w-full h-full z-10">
-      <div className="relative w-full h-full bg-slate-900 border border-slate-700 rounded-sm overflow-hidden flex items-center justify-center shadow-inner">
+      <div 
+        className="relative w-full h-full bg-slate-900 border border-slate-700 rounded-sm overflow-hidden flex items-center justify-center shadow-inner"
+        onMouseDown={handlePointerDown}
+        onMouseMove={handlePointerMove}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerUp}
+        onTouchStart={handlePointerDown}
+        onTouchMove={handlePointerMove}
+        onTouchEnd={handlePointerUp}
+      >
         {/* @ts-ignore - React 19 type mismatch in react-webcam */}
         <Webcam
           ref={webcamRef}
@@ -158,6 +250,23 @@ export default function CameraView({ params, onCountUpdate }: CameraViewProps) {
         <div className="absolute bottom-4 right-4 w-10 h-10 border-b-2 border-r-2 border-sky-500/50 z-20 pointer-events-none"></div>
       </div>
       
+      <div className="absolute top-4 right-4 lg:top-8 lg:right-8 flex flex-col gap-2 z-30">
+        <button 
+          onClick={() => setIsDrawingExclusion(!isDrawingExclusion)}
+          className={`px-3 py-2 rounded text-[9px] lg:text-[10px] uppercase font-bold border transition-colors shadow ${isDrawingExclusion ? 'bg-amber-600 text-white border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
+        >
+          {isDrawingExclusion ? 'FINALIZAR ÁREAS' : 'IGNORAR ÁREAS'}
+        </button>
+        {exclusionZones.length > 0 && (
+          <button 
+            onClick={() => setExclusionZones([])}
+            className="px-3 py-2 bg-red-900/80 hover:bg-red-800 text-red-300 rounded text-[9px] lg:text-[10px] uppercase font-bold border border-red-700 transition-colors shadow"
+          >
+            LIMPAR {exclusionZones.length} ÁREA(S)
+          </button>
+        )}
+      </div>
+
       {/* Floating Overlay Tools */}
       <div className="absolute top-4 left-4 lg:top-8 lg:left-8 flex flex-col gap-2 z-30 pointer-events-none">
         <div className="bg-slate-900/90 backdrop-blur-md px-2 py-1 lg:px-3 lg:py-1.5 rounded border border-slate-700 text-[9px] lg:text-[10px] font-mono text-sky-400">

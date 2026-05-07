@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ProcessorParams, presets, objectTypes, defaultParams } from '../lib/cvProcessor';
 import { Save, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
 
@@ -220,29 +220,75 @@ export default function ControlsPanel({ params, onChange, lastCount }: ControlsP
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-400 w-full transition-colors"
-                  >
-                    {showAdvanced ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
-                    Parâmetros Avançados
-                  </button>
-                  
-                  {showAdvanced && (
-                    <div className="mt-5 space-y-5">
-                      <ParamSlider 
-                        label="Resolução do Acumulador (dp)" 
-                        value={params.dp} 
-                        min={1} max={5} step={0.1}
-                        onChange={(v) => updateParam('dp', v)} 
-                      />
-                    </div>
-                  )}
-                </div>
               </>
             )}
+
+            <div className="pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-400 w-full transition-colors"
+              >
+                {showAdvanced ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
+                Parâmetros Avançados Industriais
+              </button>
+              
+              {showAdvanced && (
+                <div className="mt-5 space-y-4">
+                  {params.method === 'hough' && (
+                    <ParamSlider 
+                      label="Resolução do Acumulador (dp)" 
+                      value={params.dp} 
+                      min={1} max={5} step={0.1}
+                      onChange={(v) => updateParam('dp', v)} 
+                    />
+                  )}
+
+                  <div className="space-y-2 mt-4">
+                     <label className="text-[10px] font-mono text-slate-400 uppercase">Processamento da Imagem</label>
+                     <label className="flex items-center space-x-2 text-xs text-slate-300">
+                       <input type="checkbox" checked={params.useClahe} onChange={(e) => updateParam('useClahe', e.target.checked)} className="rounded border-slate-700 bg-slate-900" />
+                       <span>Equilíbrio CLAHE (Sombras/Luzes)</span>
+                     </label>
+                     <label className="flex items-center space-x-2 text-xs text-slate-300">
+                       <input type="checkbox" checked={params.useBilateral} onChange={(e) => updateParam('useBilateral', e.target.checked)} className="rounded border-slate-700 bg-slate-900" />
+                       <span>Filtro Bilateral (Anti-Ruído, preserva bordas)</span>
+                     </label>
+                  </div>
+
+                  <div className="space-y-2 mt-4">
+                     <label className="text-[10px] font-mono text-slate-400 uppercase">Filtros Físicos (Palletização)</label>
+                     <label className="flex items-center space-x-2 text-xs text-slate-300">
+                       <input type="checkbox" checked={params.useROI} onChange={(e) => updateParam('useROI', e.target.checked)} className="rounded border-slate-700 bg-slate-900" />
+                       <span>Auto-ROI (Isolar área útil / Cortar fundo)</span>
+                     </label>
+                     <label className="flex items-center space-x-2 text-xs text-slate-300">
+                       <input type="checkbox" checked={params.geomValidation} onChange={(e) => updateParam('geomValidation', e.target.checked)} className="rounded border-slate-700 bg-slate-900" />
+                       <span>Validação Geométrica (Evitar contagem dupla)</span>
+                     </label>
+                     <label className="flex items-center space-x-2 text-xs text-slate-300">
+                       <input type="checkbox" checked={params.filterReflections} onChange={(e) => updateParam('filterReflections', e.target.checked)} className="rounded border-slate-700 bg-slate-900" />
+                       <span>Anti-Reflexo (Bloquear brilhos internos falsos)</span>
+                     </label>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase block mb-1">Visualização de Debug</label>
+                    <select 
+                      value={params.debugView || 'normal'}
+                      onChange={(e) => updateParam('debugView', e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+                    >
+                      <option value="normal">Normal (Resultado Final)</option>
+                      <option value="roi">Máscara ROI (Área Útil)</option>
+                      <option value="thresh">Threshold Adaptativo</option>
+                      <option value="edges">Bordas (Canny)</option>
+                      <option value="discarded">ITENS DESCARTADOS</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -262,19 +308,34 @@ export default function ControlsPanel({ params, onChange, lastCount }: ControlsP
 }
 
 function ParamSlider({ label, value, min, max, step = 1, onChange }: { label: string, value: number, min: number, max: number, step?: number, onChange: (v: number) => void }) {
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localValue !== value) {
+        onChange(localValue);
+      }
+    }, 150); // 150ms debounce for processing optimization
+    return () => clearTimeout(handler);
+  }, [localValue, value, onChange]);
+
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-[11px] font-mono">
         <span className="text-slate-400">{label}</span>
-        <span className="text-sky-400">[{value}]</span>
+        <span className="text-sky-400">[{localValue}]</span>
       </div>
       <input 
         type="range" 
         min={min} 
         max={max} 
         step={step}
-        value={value} 
-        onChange={(e) => onChange(parseFloat(e.target.value))}
+        value={localValue} 
+        onChange={(e) => setLocalValue(parseFloat(e.target.value))}
         className="w-full h-1.5 bg-slate-800 appearance-none rounded-full cursor-pointer accent-sky-500"
       />
     </div>
